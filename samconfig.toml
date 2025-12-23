@@ -1,0 +1,17 @@
+version = 0.1
+
+[default.build]
+[default.build.parameters]
+use_container = true
+
+[default.validate]
+[default.validate.parameters]
+template_file = "template.yml"
+
+[default.package]
+[default.package.parameters]
+region = "ap-northeast-1"
+
+[default.publish]
+[default.publish.parameters]
+region = "ap-northeast-1"

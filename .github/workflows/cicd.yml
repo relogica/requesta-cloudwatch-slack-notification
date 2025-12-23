@@ -1,0 +1,156 @@
+name: SAM Deploy
+
+on:
+  push:
+    branches:
+      - master
+      - staging
+      - develop
+
+env:
+  SAM_TEMPLATE: template.yml
+  AWS_REGION: ap-northeast-1
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      iam_role: ${{ steps.set-env.outputs.iam_role }}
+      s3_bucket: ${{ steps.set-env.outputs.s3_bucket }}
+      app_name: ${{ steps.set-env.outputs.app_name }}
+    steps:
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            echo "environment=prd" >> $GITHUB_OUTPUT
+            echo "iam_role=CI_PRD_DEPLOY_IAM_ROLE" >> $GITHUB_OUTPUT
+            echo "s3_bucket=CI_PRD_SAR_S3_BUCKET" >> $GITHUB_OUTPUT
+            echo "app_name=requesta-cloudwatch-slack-notification" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=stg" >> $GITHUB_OUTPUT
+            echo "iam_role=CI_STG_DEPLOY_IAM_ROLE" >> $GITHUB_OUTPUT
+            echo "s3_bucket=CI_STG_SAR_S3_BUCKET" >> $GITHUB_OUTPUT
+            echo "app_name=requesta-cloudwatch-slack-notification-stg" >> $GITHUB_OUTPUT
+          else
+            echo "environment=dev" >> $GITHUB_OUTPUT
+            echo "iam_role=CI_DEV_DEPLOY_IAM_ROLE" >> $GITHUB_OUTPUT
+            echo "s3_bucket=CI_DEV_SAR_S3_BUCKET" >> $GITHUB_OUTPUT
+            echo "app_name=requesta-cloudwatch-slack-notification-dev" >> $GITHUB_OUTPUT
+          fi
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets[needs.setup.outputs.iam_role] }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update SAR application name
+        run: |
+          sed -i "s/Name: requesta-cloudwatch-slack-notification/Name: ${{ needs.setup.outputs.app_name }}/" ${{ env.SAM_TEMPLATE }}
+
+      - name: Validate SAM template
+        run: sam validate --template ${{ env.SAM_TEMPLATE }}
+
+      - name: Build with SAM
+        run: sam build --use-container
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-resources
+          path: |
+            .aws-sam/build/
+            ${{ env.SAM_TEMPLATE }}
+
+  publish:
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript
+        run: npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets[needs.setup.outputs.iam_role] }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-resources
+          path: .
+
+      - name: Package for SAR
+        run: |
+          sam package \
+            --template-file .aws-sam/build/template.yaml \
+            --output-template-file packaged.yml \
+            --s3-bucket ${{ secrets[needs.setup.outputs.s3_bucket] }}
+
+      - name: Upload packaged template
+        uses: actions/upload-artifact@v4
+        with:
+          name: packaged-output
+          path: packaged.yml
+
+      - name: Publish to SAR
+        run: sam publish --template packaged.yml
+
+      - name: Output SAR info
+        run: |
+          echo "Published to SAR: ${{ needs.setup.outputs.app_name }}"
+          echo "Environment: ${{ needs.setup.outputs.environment }}"

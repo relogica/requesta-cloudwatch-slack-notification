@@ -1,0 +1,23 @@
+{
+  "name": "requesta-cloudwatch-slack-notification",
+  "description": "requesta-cloudwatch-slack-notification",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "test": "jest --clear-cache && jest --coverage --verbose"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.36.1",
+    "@slack/webhook": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^22.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: 2010-09-09
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  requesta-cloudwatch-slack-notification
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: requesta-cloudwatch-slack-notification
+    Description: requesta-cloudwatch-sns-slack-notification
+    Author: Relogica
+    SemanticVersion: 0.0.1
+
+Parameters:
+  SlackWebhookUrl:
+    Type: String
+  SNSTopicArn:
+    Type: String
+
+Resources:
+  RequestaCloudWatchSNSSlackNotification:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: requesta-cw-slack-notice
+      Description: This lambda function notifies Slack of CloudWatch logs triggered by SNS.
+      Runtime: nodejs22.x
+      CodeUri: ./
+      Handler: dist/index.handler
+      MemorySize: 128
+      Timeout: 100
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - 'logs:DescribeLogGroups'
+                - 'logs:DescribeLogStreams'
+                - 'logs:DescribeMetricFilters'
+                - 'logs:FilterLogEvents'
+                - 'logs:GetLogEvents'
+              Resource: '*'
+      Environment:
+        Variables:
+          SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
+      Events:
+        SNSTopic:
+          Type: SNS
+          Properties:
+            Topic: !Ref SNSTopicArn
+    Metadata:
+      BuildMethod: makefile
+
+  RequestaCloudWatchSNSSlackNotificationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${RequestaCloudWatchSNSSlackNotification}
+      RetentionInDays: 14
