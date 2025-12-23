@@ -150,6 +150,15 @@ jobs:
       - name: Publish to SAR
         run: sam publish --template packaged.yml
 
+      - name: Set SAR application policy
+        run: |
+          AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          APP_ARN="arn:aws:serverlessrepo:${{ env.AWS_REGION }}:${AWS_ACCOUNT_ID}:applications/${{ needs.setup.outputs.app_name }}"
+          echo "Setting application policy for: ${APP_ARN}"
+          aws serverlessrepo put-application-policy \
+            --application-id "${APP_ARN}" \
+            --statements "Principals=${AWS_ACCOUNT_ID},Actions=Deploy"
+
       - name: Output SAR info
         run: |
           echo "Published to SAR: ${{ needs.setup.outputs.app_name }}"
